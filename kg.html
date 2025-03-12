@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>P&ID Knowledge Graph Visualization</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+    .node {
+      cursor: pointer;
+    }
+    .link {
+      stroke: #999;
+      stroke-opacity: 0.3;
+      stroke-width: 1px;
+    }
+    .tooltip {
+      position: absolute;
+      padding: 12px 16px;
+      border-radius: 8px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      max-width: 320px;
+      z-index: 1000;
+      font-size: 14px;
+      background-color: white;
+      color: #333;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    .tooltip-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      font-size: 16px;
+      color: #111;
+    }
+    .tooltip-type {
+      font-style: italic;
+      margin-bottom: 10px;
+      opacity: 0.8;
+      color: #555;
+    }
+    .tooltip-attribute {
+      display: flex;
+      margin-bottom: 5px;
+    }
+    .tooltip-attribute-name {
+      font-weight: 500;
+      margin-right: 10px;
+      min-width: 130px;
+      color: #444;
+    }
+    .tooltip-attribute-value {
+      text-align: right;
+      flex-grow: 1;
+      color: #111;
+    }
+    svg {
+      height: 100vh;
+      width: 100vw;
+    }
+  </style>
+</head>
+<body class="bg-gray-900">
+  <div id="graph"></div>
+  <div class="tooltip bg-gray-800 text-white shadow-lg"></div>
+
+  <script>
+    // Define asset types and icons
+    const assetTypes = [
+      "Pump", "Valve", "Tank", "Sensor", "Boiler", 
+      "Compressor", "Heater", "Filter", "Robot", "Conveyor"
+    ];
+
+    // Generate random data
+    function generateRandomDate(start, end) {
+      return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime())).toLocaleDateString();
+    }
+
+    function getRandomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function generateRandomData() {
+      const nodes = [];
+      const links = [];
+      let nodeId = 0;
+
+      // Add root node
+      const rootNode = {
+        id: nodeId++,
+        name: "P&ID:1244CE",
+        group: "root",
+        radius: 40,
+        fixed: true,
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        attributes: {
+          "Documentation": "Complete",
+          "Last Updated": generateRandomDate(new Date(2023, 0, 1), new Date()),
+          "Version": "v3.2.1",
+          "Status": "Active",
+          "Owner": "Engineering Department",
+          "Created Date": generateRandomDate(new Date(2020, 0, 1), new Date(2021, 0, 1)),
+          "Revision": "R7",
+          "Approval Status": "Approved",
+          "Project ID": "PRJ-2023-089",
+          "Security Classification": "Confidential"
+        }
+      };
+      nodes.push(rootNode);
+
+      // Add group nodes
+      const groupNames = ["Group A", "Group B", "Group C", "Group D", "Group E"];
+      const groupNodes = [];
+
+      for (let i = 0; i < 5; i++) {
+        const groupNode = {
+          id: nodeId++,
+          name: groupNames[i],
+          group: "parent",
+          radius: 30,
+          collapsed: false,
+          attributes: {
+            "Location": `Sector ${i+1}`,
+            "Category": ["Primary", "Secondary", "Tertiary", "Auxiliary", "Backup"][i],
+            "System Type": ["Hydraulic", "Pneumatic", "Electrical", "Mechanical", "Hybrid"][i],
+            "Priority": ["High", "Medium", "Low", "Critical", "Standard"][i],
+            "Safety Class": ["Class A", "Class B", "Class C", "Class D", "Class E"][i],
+            "Operational Status": ["Running", "Standby", "Maintenance", "Offline", "Testing"][i],
+            "Installation Date": generateRandomDate(new Date(2015, 0, 1), new Date(2020, 0, 1)),
+            "Last Inspection": generateRandomDate(new Date(2022, 0, 1), new Date()),
+            "Responsible Team": ["Alpha Team", "Beta Team", "Gamma Team", "Delta Team", "Epsilon Team"][i],
+            "Next Scheduled Maintenance": generateRandomDate(new Date(), new Date(2025, 0, 1))
+          }
+        };
+        groupNodes.push(groupNode);
+        nodes.push(groupNode);
+        
+        // Add link from root to group
+        links.push({
+          source: 0,
+          target: groupNode.id,
+          value: 5
+        });
+      }
+
+      // Add child nodes to each group
+      for (let groupIndex = 0; groupIndex < groupNodes.length; groupIndex++) {
+        const parentId = groupNodes[groupIndex].id;
+        
+        for (let i = 0; i < 15; i++) {
+          const assetType = assetTypes[Math.floor(Math.random() * assetTypes.length)];
+          // Randomly assign some nodes warning/error colors
+          let nodeStatus = "normal";
+          if (Math.random() < 0.1) {
+            nodeStatus = "warning"; // 10% chance for warning (yellow)
+          } else if (Math.random() < 0.05) {
+            nodeStatus = "error"; // 5% chance for error (red)
+          }
+          
+          const childNode = {
+            id: nodeId++,
+            name: `${assetType}-${groupNames[groupIndex].split(' ')[1]}-${String(i+1).padStart(2, '0')}`,
+            group: "child",
+            parent: parentId,
+            type: assetType,
+            status: nodeStatus,
+            radius: 22,
+            attributes: {
+              "Location": `Building ${getRandomInt(1, 5)}, Floor ${getRandomInt(1, 3)}`,
+              "Capacity": `${getRandomInt(50, 500)} ${["L", "kg", "kW", "m³/h", "bar"][getRandomInt(0, 4)]}`,
+              "Last Maintenance": generateRandomDate(new Date(2023, 0, 1), new Date()),
+              "Health Score": `${getRandomInt(70, 99)}%`,
+              "Manufacturer": ["ABB", "Siemens", "Schneider", "Emerson", "Honeywell", "GE", "Yokogawa"][getRandomInt(0, 6)],
+              "Operational Hours": `${getRandomInt(1000, 20000)} hrs`,
+              "Installed Date": generateRandomDate(new Date(2018, 0, 1), new Date(2022, 0, 1)),
+              "Safety Rating": `${["A+", "A", "B+", "B", "C+"][getRandomInt(0, 4)]}`,
+              "Next Inspection": generateRandomDate(new Date(), new Date(2025, 0, 1)),
+              "Assigned Team": ["Maintenance", "Operations", "Engineering", "Quality", "Safety"][getRandomInt(0, 4)]
+            }
+          };
+          nodes.push(childNode);
+          
+          // Add link from parent to child
+          links.push({
+            source: parentId,
+            target: childNode.id,
+            value: 3
+          });
+        }
+      }
+
+      // Add some random cross-links between child nodes to create hairball effect
+      const childNodes = nodes.filter(n => n.group === "child");
+      
+      // Add about 30 random links
+      for (let i = 0; i < 30; i++) {
+        const source = childNodes[Math.floor(Math.random() * childNodes.length)].id;
+        let target = childNodes[Math.floor(Math.random() * childNodes.length)].id;
+        
+        // Make sure we're not linking a node to itself
+        while (source === target) {
+          target = childNodes[Math.floor(Math.random() * childNodes.length)].id;
+        }
+        
+        links.push({
+          source: source,
+          target: target,
+          value: 1
+        });
+      }
+
+      return { nodes, links };
+    }
+
+    // Create graph
+    const data = generateRandomData();
+    
+    // Setup SVG
+    const svg = d3.select("#graph")
+      .append("svg")
+      .attr("viewBox", [0, 0, window.innerWidth, window.innerHeight])
+      .call(d3.zoom()
+        .scaleExtent([0.3, 5])
+        .on("zoom", (event) => {
+          g.attr("transform", event.transform);
+        }));
+
+    const g = svg.append("g");
+    
+    // Define svg icons for the asset types
+    svg.append("defs")
+      .html(`
+        <symbol id="icon-pump" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="30" fill="none" stroke="white" stroke-width="4"/>
+          <path d="M30 50 L70 50 M50 30 L50 70" stroke="white" stroke-width="4" fill="none"/>
+        </symbol>
+        <symbol id="icon-valve" viewBox="0 0 100 100">
+          <path d="M20 50 L40 20 L60 80 L80 50" fill="none" stroke="white" stroke-width="4"/>
+        </symbol>
+        <symbol id="icon-tank" viewBox="0 0 100 100">
+          <path d="M30 25 L30 75 Q30 90, 50 90 Q70 90, 70 75 L70 25 Q70 10, 50 10 Q30 10, 30 25 Z" fill="none" stroke="white" stroke-width="4"/>
+        </symbol>
+        <symbol id="icon-sensor" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="30" fill="none" stroke="white" stroke-width="4"/>
+          <path d="M30 50 L70 50" stroke="white" stroke-width="4" fill="none"/>
+        </symbol>
+        <symbol id="icon-boiler" viewBox="0 0 100 100">
+          <rect x="25" y="25" width="50" height="50" rx="5" ry="5" fill="none" stroke="white" stroke-width="4"/>
+          <path d="M35 35 Q50 20, 65 35 M35 65 Q50 80, 65 65" fill="none" stroke="white" stroke-width="4"/>
+        </symbol>
+        <symbol id="icon-compressor" viewBox="0 0 100 100">
+          <rect x="30" y="30" width="40" height="40" fill="none" stroke="white" stroke-width="4"/>
+          <path d="M20 50 L30 50 M70 50 L80 50" stroke="white" stroke-width="4"/>
+        </symbol>
+        <symbol id="icon-heater" viewBox="0 0 100 100">
+          <path d="M20 35 L80 35 L80 65 L20 65 Z" fill="none" stroke="white" stroke-width="4"/>
+          <path d="M30 45 L30 55 M40 45 L40 55 M50 45 L50 55 M60 45 L60 55 M70 45 L70 55" stroke="white" stroke-width="4"/>
+        </symbol>
+        <symbol id="icon-filter" viewBox="0 0 100 100">
+          <path d="M30 30 L70 30 L50 70 Z" fill="none" stroke="white" stroke-width="4"/>
+          <line x1="30" y1="50" x2="70" y2="50" stroke="white" stroke-width="4"/>
+        </symbol>
+        <symbol id="icon-robot" viewBox="0 0 100 100">
+          <rect x="30" y="40" width="40" height="40" rx="5" ry="5" fill="none" stroke="white" stroke-width="4"/>
+          <circle cx="40" cy="50" r="5" fill="white" stroke="white" stroke-width="2"/>
+          <circle cx="60" cy="50" r="5" fill="white" stroke="white" stroke-width="2"/>
+          <path d="M40 70 L40 85 M60 70 L60 85" stroke="white" stroke-width="4"/>
+          <rect x="35" y="20" width="30" height="20" rx="5" ry="5" fill="none" stroke="white" stroke-width="4"/>
+        </symbol>
+        <symbol id="icon-conveyor" viewBox="0 0 100 100">
+          <rect x="20" y="40" width="60" height="20" fill="none" stroke="white" stroke-width="4"/>
+          <circle cx="30" cy="60" r="10" fill="none" stroke="white" stroke-width="4"/>
+          <circle cx="70" cy="60" r="10" fill="none" stroke="white" stroke-width="4"/>
+          <path d="M25 40 L35 30 L65 30 L75 40" fill="none" stroke="white" stroke-width="4"/>
+        </symbol>
+      `);
+    
+    // Create tooltip
+    const tooltip = d3.select(".tooltip");
+
+    // Create simulation
+    const simulation = d3.forceSimulation(data.nodes)
+      .force("link", d3.forceLink(data.links).id(d => d.id).distance(d => {
+        // Root to group links are longer, group to child shorter
+        if (d.source.group === "root" && d.target.group === "parent") return 150;
+        if (d.source.group === "parent" && d.target.group === "child") return 100;
+        return 50; // Random links between child nodes
+      }))
+      .force("charge", d3.forceManyBody().strength(-300))
+      .force("center", d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2))
+      .force("collision", d3.forceCollide().radius(d => d.radius * 1.5));
+
+    // Create links
+    const link = g.append("g")
+      .attr("class", "links")
+      .selectAll("line")
+      .data(data.links)
+      .enter()
+      .append("line")
+      .attr("class", "link");
+
+    // Create node groups
+    const node = g.append("g")
+      .attr("class", "nodes")
+      .selectAll(".node")
+      .data(data.nodes)
+      .enter()
+      .append("g")
+      .attr("class", "node")
+      .call(d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended));
+
+    // Create node circles with different colors based on type and status
+    node.append("circle")
+      .attr("r", d => d.radius)
+      .attr("class", d => {
+        if (d.group === "root") return "bg-blue-600";
+        if (d.group === "parent") return "bg-green-600";
+        if (d.status === "warning") return "bg-yellow-500";
+        if (d.status === "error") return "bg-red-500";
+        return "bg-green-400";
+      })
+      .attr("fill", d => {
+        if (d.group === "root") return "#2563eb"; // Blue
+        if (d.group === "parent") return "#16a34a"; // Green
+        if (d.status === "warning") return "#eab308"; // Yellow
+        if (d.status === "error") return "#ef4444"; // Red
+        return "#4ade80"; // Light green
+      });
+
+    // Add text to root and parent nodes
+    node.filter(d => d.group === "root" || d.group === "parent")
+      .append("text")
+      .attr("text-anchor", "middle")
+      .attr("dy", ".3em")
+      .attr("fill", "white")
+      .attr("font-weight", "bold")
+      .attr("font-size", d => d.group === "root" ? "12px" : "14px") // Smaller font for root
+      .each(function(d) {
+        if (d.group === "root") {
+          // Split the text into two lines for root node
+          const text = d3.select(this);
+          text.append("tspan")
+            .attr("x", 0)
+            .attr("dy", "-0.5em")
+            .text("P&ID");
+          
+          text.append("tspan")
+            .attr("x", 0)
+            .attr("dy", "1.2em")
+            .text("1244CE");
+        } else {
+          // For parent nodes, just show the collapse/expand symbol
+          d3.select(this).text(d.collapsed ? "+" : "−");
+        }
+      });
+
+    // Add icons to child nodes
+    node.filter(d => d.group === "child")
+      .append("use")
+      .attr("xlink:href", d => `#icon-${d.type.toLowerCase()}`)
+      .attr("x", d => -d.radius/1.5)
+      .attr("y", d => -d.radius/1.5)
+      .attr("width", d => d.radius*1.3)
+      .attr("height", d => d.radius*1.3);
+
+    // Handle events
+    node.on("mouseover", function(event, d) {
+        // Show tooltip
+        tooltip.transition()
+          .duration(200)
+          .style("opacity", 0.9);
+        
+        // Populate tooltip content
+        let tooltipContent = `
+          <div class="tooltip-title">${d.name}</div>
+          <div class="tooltip-type">${d.group === "root" ? "(P&ID:1244CE, Root)" : 
+                                    d.group === "parent" ? "Group" : 
+                                    d.type}</div>
+          <div class="mt-2 mb-1 border-t border-gray-300"></div>
+        `;
+        
+        // Add attributes list without bullet points
+        Object.entries(d.attributes).forEach(([key, value]) => {
+          tooltipContent += `
+            <div class="tooltip-attribute">
+              <span class="tooltip-attribute-name">${key}:</span>
+              <span class="tooltip-attribute-value">${value}</span>
+            </div>
+          `;
+        });
+        
+        tooltip.html(tooltipContent);
+        
+        // Position tooltip near the mouse but not directly under it
+        updateTooltipPosition(event);
+      })
+      .on("mousemove", updateTooltipPosition)
+      .on("mouseout", function() {
+        // Hide tooltip
+        tooltip.transition()
+          .duration(500)
+          .style("opacity", 0);
+      })
+      .on("click", function(event, d) {
+        // Only handle clicks on parent nodes (groups) and root
+        if (d.group === "parent" || d.group === "root") {
+          // Toggle collapsed state
+          d.collapsed = !d.collapsed;
+
+          // Update the text
+          d3.select(this).select("text")
+            .each(function(d) {
+              if (d.group === "root") {
+                // Update root node text
+                const text = d3.select(this);
+                text.selectAll("*").remove(); // Clear existing tspans
+                
+                text.append("tspan")
+                  .attr("x", 0)
+                  .attr("dy", "-0.5em")
+                  .text("P&ID");
+                
+                text.append("tspan")
+                  .attr("x", 0)
+                  .attr("dy", "1.2em")
+                  .text(d.collapsed ? "+" : "1244CE");
+              } else {
+                // Update parent node text
+                d3.select(this).text(d.collapsed ? "+" : "−");
+              }
+            });
+
+            // Show/hide children and associated links
+            const childNodes = node.filter(n => {
+              if (d.group === "root") {
+                // For root node, hide/show all non-root nodes
+                return n.group !== "root";
+              } else {
+                // For parent nodes, hide/show only their direct children
+                return n.parent === d.id;
+              }
+            });
+            
+            // Update link visibility
+            link.style("display", function(l) {
+              const sourceNode = typeof l.source === 'object' ? l.source : data.nodes.find(n => n.id === l.source);
+              const targetNode = typeof l.target === 'object' ? l.target : data.nodes.find(n => n.id === l.target);
+              
+              // Show link if both nodes are visible
+              if (!isNodeHidden(sourceNode) && !isNodeHidden(targetNode)) {
+                return "";
+              }
+              return "none";
+            });
+
+            // Update node visibility
+            if (d.collapsed) {
+              childNodes.style("display", "none");
+            } else {
+              childNodes.style("display", "");
+            }
+            
+            // Restart simulation to adjust layout
+            simulation.alpha(0.3).restart();
+        }
+      });
+
+    // Helper function to check if a node should be hidden
+    function isNodeHidden(node) {
+      if (!node) return true;
+      
+      // Node is hidden if it's a child of a collapsed parent
+      if (node.parent) {
+        const parentNode = data.nodes.find(n => n.id === node.parent);
+        if (parentNode && parentNode.collapsed) return true;
+      }
+      
+      // Node is hidden if root is collapsed (except for root itself)
+      const rootNode = data.nodes[0];
+      if (rootNode.collapsed && node.group !== "root") return true;
+      
+      return false;
+    }
+
+    function updateTooltipPosition(event) {
+      tooltip
+        .style("left", (event.pageX + 15) + "px")
+        .style("top", (event.pageY - 28) + "px");
+    }
+
+    // Update positions during simulation
+    simulation.on("tick", () => {
+      // Pin the root node to center
+      data.nodes[0].fx = window.innerWidth / 2;
+      data.nodes[0].fy = window.innerHeight / 2;
+      
+      link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+      node
+        .attr("transform", d => `translate(${d.x}, ${d.y})`);
+    });
+
+    // Drag functions
+    function dragstarted(event, d) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      
+      // Don't allow dragging the root node
+      if (d.group === "root") return;
+      
+      d.fx = d.x;
+      d.fy = d.y;
+    }
+
+    function dragged(event, d) {
+      // Don't allow dragging the root node
+      if (d.group === "root") return;
+      
+      d.fx = event.x;
+      d.fy = event.y;
+    }
+
+    function dragended(event, d) {
+      if (!event.active) simulation.alphaTarget(0);
+      
+      // Don't allow dragging the root node
+      if (d.group === "root") return;
+      
+      // Allow nodes to move freely again
+      d.fx = null;
+      d.fy = null;
+    }
+
+    // Handle window resize
+    window.addEventListener("resize", function() {
+      svg.attr("viewBox", [0, 0, window.innerWidth, window.innerHeight]);
+      simulation.force("center", d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2));
+      simulation.alpha(0.3).restart();
+    });
+  </script>
+</body>
+</html>
